@@ -1,0 +1,1401 @@
+;Created by: Nour Ayman (1170408)
+;Presented to: Dr. Khaled Mohammad Soradi
+;Game Name: Number Munchers
+;---------------------------------------------------
+;Copied code snippets:
+
+;Random number generation
+;https://stackoverflow.com/questions/17855817/generating-a-random-number-within-range-of-0-9-in-x86-8086-assembly/17856347
+;In the block of code under "Answer, by @johnfound:"
+
+;Adding delay (To pause the game briefly so that animations work properly)
+;https://stackoverflow.com/questions/15201955/how-to-set-1-second-time-delay-at-assembly-language-8086
+;In the four lines of code in the reply by john 
+
+;---------------------------------------------------
+;The monster was drawn by myself
+;Instructions on how to play are included in the game itself
+
+
+SetCursor macro x,y
+	push ax
+	push dx
+	push bx
+	mov ah,2 ;set cursor position
+	mov dl,x
+	mov dh,y ;mov dx,0A0Ah or dl=X dh=Y
+	mov bx,0
+	int 10h
+	pop bx
+	pop dx
+	pop ax
+endm SetCursor
+
+PrintMessage macro MessageToPrint
+	mov ah,9
+	mov dx, offset MessageToPrint
+	int 21h
+endm PrintMessage
+
+RandomNumbers macro inputNum
+
+mov bx,0
+mov SI,0
+
+RandomNumbersIn:
+
+MOV AH, 00h  ; interrupts to get system time        
+   INT 1AH      ; CX:DX now hold number of clock ticks since midnight      
+
+   mov  ax, dx
+   xor  dx, dx
+   mov  cx, inputNum 
+   div  cx       ; here dx contains the remainder of the division - from 0 to 9
+   
+   call AddDelay
+   
+cmp dx,0
+jz RandomNumbersIn
+   
+mov NumbersArray[SI],dl
+
+push ax
+push bx
+mov al, NumbersArray[SI]
+mov ah,0
+div divNum
+cmp ah,0 
+jnz ContinueRandomNumbersIn ;not zero = not divisible by number = wrong answer
+mov al,NumbersArray[SI]
+mov CorrectAnswer[SI], al
+
+ContinueRandomNumbersIn:
+pop bx
+pop ax
+
+inc SI  
+
+;inc bx
+;cmp bx,16h
+cmp SI,20
+jnz RandomNumbersIn
+
+endm RandomNumbers
+
+
+
+
+
+DrawNumbers macro
+local DrawNumbersLoop,OneDigit, DontDrawThis
+
+lea di, NumbersArray
+
+mov SI,0
+mov bh,3
+mov bl,0
+;mov DI,0
+
+DrawNumbersLoop:
+mov dl, [di]
+
+;add dl, '0'
+
+cmp dl,0
+jz DontDrawThis
+
+;Drawing:
+
+;add bh,5 ;move right 
+;add bl,2 ;move down
+mov bl, YArray[SI]
+mov bh, XArray[SI] ;move right
+SetCursor bh,bl
+;NoChangeBL:
+
+cmp dl,9
+jna OneDigit
+
+;Two Digits:
+
+mov ah,0
+mov al,dl
+mov ch,10
+div ch ;ah is remainder, al is result
+
+mov dl,al
+mov ch,ah ;ch is remainder
+
+mov ah,2
+add dl,48
+int 21h
+
+mov dl,ch
+inc bh
+
+SetCursor bh,bl
+
+
+OneDigit:
+
+
+
+
+mov ah,2
+add dl,48
+int 21h
+;;;;;;;;;;krila
+
+DontDrawThis:
+;cmp ah,10
+;inc DI
+inc di
+inc SI
+cmp SI,20
+jnz DrawNumbersLoop
+
+endm DrawNumbers
+
+
+drawBlankNum macro x,y
+local horizproc, vertproc
+    ;mov cx,col ;column            =5 
+    ;mov dx,row ;row           =160
+	;mov al,color ;pixel color          =2
+	;mov ah,0ch ;draw pixel command 
+	mov al,1 ;pixel color
+	mov ah,0ch ;draw pixel command 
+	
+	mov cx,x
+	mov dx,y 
+	mov extra,dx 
+	add extra,10  
+	
+	mov extra2, cx
+	
+	mov bx,cx
+	add bx,40 
+	                        
+	                
+   vertproc:          
+    	horizproc: 
+    	int 10h 
+    	inc cx ;column 
+    	cmp cx,bx ;column
+    	jne horizproc
+    	inc dx    
+    	mov cx,extra2 ;45   
+    	cmp dx,extra ;row
+    	jnz vertproc    
+
+
+endm drawBlankNum 
+
+
+
+drawMuncher macro x,y, color1, MuncherType
+local loop1circ, loop2circ, color1circ,color2circ
+
+	lea di, MuncherType
+
+	mov cx,x
+	mov dx,y
+	;mov cx,30
+	;mov dx,50
+	;mov al,03h ;pixel color          =2
+	mov ah,0ch ;draw pixel command
+	
+	add cx,55
+	mov extra,cx
+	sub cx,55
+push dx	
+	add dx,35
+	mov extra2,dx
+	sub dx,35
+	
+
+loop2circ:
+push cx
+	loop1circ:
+	mov bl,[di]
+	cmp bl,0
+	jz color1circ
+	push bx
+	mov bh,ah
+	mov ax,color1
+	mov ah,bh
+	pop bx
+	jmp color2circ
+	color1circ:
+	mov al,0
+	color2circ:
+	int 10h
+	inc cx
+	inc di
+	cmp cx,extra
+	jnz loop1circ
+	inc dx    
+    pop cx
+    cmp dx,extra2 ;row
+	jnz loop2circ
+
+pop dx	
+
+
+endm drawMuncher
+
+
+
+;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;
+.MODEL SMALL
+.STACK 64
+.DATA
+
+			LivesCounter db 'Lives: ','$'
+			LevelCounter db 'Level: ','$'
+			
+			Objective db 'Eat numbers divisible by ','$'
+			Objective2 db 'to win!','$'
+			LevelWonMessage db 'Congratulations!','$'
+			LevelWonMessage2 db 'You beat level ','$'
+			LevelWonMessage3 db 'What would you like to do now?','$'
+			LevelWonMessage4 db '[1] Continue to next level','$'
+			LevelWonMessage5 db '[2] Exit game','$'
+			
+			QuitGameMessage1 db 'Are you sure? :(','$'
+			QuitGameMessage2 db '[1] No! Take me back!','$'
+			QuitGameMessage3 db '[2] Yes. Exit game.','$'
+			
+			MainMenuMessageLine db '___________________','$' 
+			MainMenuMessage1 db 'NUMBER MUNCHERS','$' 
+			MainMenuMessage2 db '[1] Start the game!','$'
+			MainMenuMessage3 db '[2] How to Play','$'
+			;MainMenuMessage3 db '[3] Info','$'
+			
+			HowToPlayMessage1 db 'This is you!','$'
+			HowToPlayMessage2 db 'You are very hungry and need to eat','$'
+			HowToPlayMessage3 db 'numbers divisible by a given number!','$'
+			HowToPlayMessage4 db 'Press E to Eat and press the ','$'
+			HowToPlayMessage5 db 'arrow keys to move.','$'
+			HowToPlayMessage6 db 'Most importantly, HAVE FUN! :)','$'
+			HowToPlayMessage7 db 'Press any key to return...','$'
+			
+			GameOverMessage1 db 'You lost...','$'
+			GameOverMessage2 db 'But you did a great job!','$'
+			GameOverMessage3 db 'You reached level: ','$'
+			GameOverMessage4 db 'Thank you for playing.','$'
+			GameOverMessage5 db 'Press any key to exit the game.','$'
+			
+			WonGameMessage1 db 'CONGRATULATIONS!','$'
+			WonGameMessage2 db 'You are now a MATH MASTER!','$'
+			WonGameMessage3 db 'Thank you for playing!','$'
+			WonGameMessage4 db 'Press any key to exit.','$'
+			
+			
+			
+
+              ;GetPlayerName db 'Enter your name: ','$'
+			  ;StartMessage db 'Press any key to continue','$'
+			  NumbersArray db 20,?,20 dup(?)
+			  Lives db 3
+			  Level db 1
+			  
+			  LevelWonBool db 0
+			  
+			  DivNum db 2
+			  ;NumbersArray db 20,?,20 dup(?)
+			  
+			  MaxValue dw 10
+			  
+			  XArray db 4, 4, 4, 4, 12, 12, 12, 12, 20, 20, 20, 20, 28,28,28,28, 36,36,36,36
+			  YArray db 5,10,15,20,5,10,15,20,5,10,15,20,5,10,15,20,5,10,15,20
+			  
+			  
+			  PlayerX dw 5
+			  PlayerY dw 23
+			  
+			  PlayerPositionX dw 4
+			  PlayerPositionY dw 5
+
+			  
+			  extra dw 0      
+			  extra2 dw 0
+			  
+			  CorrectAnswer db 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+			  
+			  
+			  
+
+
+MuncherNeutral db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1
+db 1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1
+db 1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1
+db 1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1
+db 1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1
+db 1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1
+db 1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1
+db 1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1
+db 1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1
+db 1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1
+db 1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1
+db 1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1
+db 1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1
+db 1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1
+db 1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+db 0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0
+db 0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0
+db 0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0
+db 0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0
+db 0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,0,0,0,0,0,0,0
+db 0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,0,0,0,0,0,0,0
+
+MuncherHappy db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,0,0,1,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,1,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,0,0,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1
+db 1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1
+db 1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1
+db 1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1
+db 1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1
+db 1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1
+db 1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1
+db 1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1
+db 1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1
+db 1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1
+db 1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1
+db 1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1
+db 1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1
+db 1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1
+db 1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+db 0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0
+db 0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0
+db 0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0
+db 0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0
+db 0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,0,0,0,0,0,0,0
+db 0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,0,0,0,0,0,0,0
+
+MuncherEating db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,0,0,1,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,1,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,0,0,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+db 0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0
+db 0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0
+db 0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0
+db 0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,0,0,0,0,0,0,0
+db 0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,0,0,0,0,0,0,0
+
+
+MuncherSad db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,1,1,1,1,1,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+db 0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0
+db 0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0
+db 0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0
+db 0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0
+db 0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,0,0,0,0,0,0,0
+db 0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,0,0,0,0,0,0,0
+
+
+.CODE
+
+
+
+;;;;;;;;;;;;;;;;;;;;MAIN;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;MAIN;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;MAIN;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;MAIN;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;MAIN;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;MAIN;;;;;;;;;;;;;;;;;;;;;;;
+MAIN PROC FAR
+
+MOV AX,@DATA
+MOV DS,AX
+
+;call ClearScreen
+
+	mov ah,0   ;set gfx mode
+	mov al,13h
+	int 10h
+
+
+MainMenu:
+
+call DrawMainMenu
+
+MainMenuInput:
+
+mov ah,0
+int 16h
+
+cmp al,49 ;one
+jz GameStart
+
+cmp al,50 ;two
+jz HowToPlay
+
+;cmp al,51 ;three jz Info
+
+jmp MainMenuInput
+
+HowToPlay:
+call DrawHowToPlay
+mov ah,0
+int 16h
+jmp MainMenu
+
+
+
+
+;mov ah,0Ah ;Put name into PlayerName ;;;;;;;;;;decided to remove the idea of inserting name because it's not used
+;mov dx, offset PlayerName
+;int 21h
+
+
+
+
+LevelWon:
+
+cmp level,9
+jnz NotWonGame
+;WonGame:
+
+call WonGame
+
+NotWonGame:
+call LevelWonCongrats
+
+
+
+GameStart:
+
+call ClearScreenGraphics
+
+call DrawPlayingScreen
+
+;StartGame:
+
+RandomNumbers MaxValue
+
+;DrawNumbers
+
+EntireGame:
+
+call CheckLevelWon
+cmp LevelWonBool,1
+jz LevelWon
+
+;setCursor 10,100
+setCursor 1,23
+PrintMessage LivesCounter
+mov ah,2
+mov dl,Lives
+add dl,'0'
+int 21h
+setCursor 30,23
+PrintMessage LevelCounter
+mov ah,2
+mov dl,Level
+add dl,'0'
+int 21h
+setCursor 1,1
+PrintMessage Objective
+
+cmp divNum,10
+jnz NotTen
+
+mov ah,2
+mov dl,1
+add dl,'0'
+int 21h
+
+mov ah,2
+mov dl,0
+add dl,'0'
+int 21h
+
+
+jmp WasTen
+NotTen:
+mov ah,2
+mov dl,divNum
+add dl,'0'
+int 21h
+WasTen:
+setCursor 28,1
+PrintMessage Objective2
+
+
+
+call CheckGameOver
+
+drawMuncher PlayerX,PlayerY, 03h, MuncherNeutral
+DrawNumbers
+
+
+
+
+CHECK:
+call AddDelay
+	mov ah,1
+	int 16h
+	jz JumpToEntireGame
+	call GetUserInput
+	jmp EntireGame
+	JumpToEntireGame:
+	jmp EntireGame
+
+
+
+;hlt
+
+
+
+MOV AH,4CH
+INT 21H
+
+MAIN ENDP
+
+
+
+
+GetUserInput PROC
+
+mov ah,0
+int 16h
+
+cmp ah,04dh ;User moved right
+jz MoveRightJump
+
+cmp ah,04bh ;User moved left
+jz MoveLeftJump
+
+cmp ah,50h ;User moved down
+jz MoveDownJump
+
+cmp ah, 48h ;User moved up
+jz MoveUpJumpFarther
+
+cmp al, 65h ;User pressed E to Eat
+jz EatJumpFarther
+
+ret
+
+MoveRightJump:
+jmp MoveRight
+
+MoveLeftJump:
+jmp MoveLeft
+
+MoveDownJump:
+jmp MoveDown
+
+MoveUpJumpFarther:
+jmp MoveUpJump
+
+EatJumpFarther:
+jmp EatJump
+
+
+MoveRight:
+cmp PlayerX,261
+jz NoMoveRight
+
+drawMuncher PlayerX, PlayerY, 00h, MuncherNeutral
+mov bx, PlayerX
+add bx, 64
+mov PlayerX,bx
+
+mov bx, PlayerPositionX
+add bx, 8
+mov PlayerPositionX,bx
+
+
+NoMoveRight:
+ret
+
+
+
+MoveLeft:
+cmp PlayerX,5
+jz NoMoveLeft
+
+drawMuncher PlayerX, PlayerY, 00h, MuncherNeutral
+mov bx, PlayerX
+sub bx, 64
+mov PlayerX,bx
+
+mov bx, PlayerPositionX
+sub bx, 8
+mov PlayerPositionX,bx
+
+NoMoveLeft:
+ret
+
+MoveUpJump:
+jmp MoveUp
+
+EatJump:
+jmp Eat
+
+MoveDown:
+cmp PlayerY,143
+jz NoMoveDown
+
+drawMuncher PlayerX, PlayerY, 00h, MuncherNeutral
+mov bx, PlayerY
+add bx, 40
+mov PlayerY,bx
+
+mov bx, PlayerPositionY
+add bx, 5
+mov PlayerPositionY,bx
+
+NoMoveDown:
+ret
+
+
+MoveUp:
+cmp PlayerY,23
+jz NoMoveUp
+
+drawMuncher PlayerX, PlayerY, 00h, MuncherNeutral
+mov bx, PlayerY
+sub bx, 40
+mov PlayerY,bx
+
+mov bx, PlayerPositionY
+sub bx, 5
+mov PlayerPositionY,bx
+
+NoMoveUp:
+ret
+
+
+
+
+
+Eat:
+
+mov al,0
+
+CheckPosition:
+
+cmp PlayerPositionY, 5
+jz CheckPositionX
+
+cmp PlayerPositionY, 10
+jnz skip1
+add al,1
+jmp CheckPositionX
+skip1:
+
+cmp PlayerPositionY, 15
+jnz skip2
+add al,2
+jmp CheckPositionX
+skip2:
+
+
+
+cmp PlayerPositionY, 20
+jnz skip3
+add al,3
+jmp CheckPositionX
+skip3:
+
+
+CheckPositionX:
+cmp PlayerPositionX,4
+jz skip7
+
+cmp PlayerPositionX,12
+jnz skip4
+add al,4
+jmp skip7
+skip4:
+
+cmp PlayerPositionX,20
+jnz skip5
+add al,8
+jmp skip7
+skip5:
+
+cmp PlayerPositionX,28
+jnz skip6
+add al,12
+jmp skip7
+skip6:
+
+cmp PlayerPositionX,36
+jnz skip7
+add al,16
+jmp skip7
+skip7:
+
+mov bl,al
+mov bh,0
+cmp NumbersArray[bx],0
+jnz FinishEatJump
+
+jmp FinishEat
+
+FinishEatJump:
+push ax
+call EatNumberWithAnimation
+pop ax
+
+push ax
+;al has value
+mov bh,0
+mov bl,al
+mov al, NumbersArray[bx]
+
+
+
+;cmp al,0
+;jz FinishEat
+
+mov ah,0
+div divNum ;ah has rest
+cmp ah,0
+jnz contJump
+
+jmp cont
+
+contJump:
+;mov dl,al
+;mov ah,2
+;add dl,'0'
+;int 21h
+dec Lives
+
+
+
+drawMuncher PlayerX, PlayerY, 03h, MuncherSad
+
+mov al, 0
+mov ah, 86h
+mov cx, 10 ;Add long delay instead of calling AddDelay several times
+mov dx, 2
+int 15h
+
+
+
+
+;cmp ah,0
+;jz NotGameOver
+;
+;dec Lives
+
+;mov ah,2
+;mov dl,Lives
+;mov dl,bl
+;add dl,'0'
+;int 21h
+
+cont:
+
+
+pop ax
+
+FinishEat:
+
+
+mov ah,0
+mov bh,0
+mov bl,al
+;mov cx, NumbersArray[bx]
+mov NumbersArray[bx],ah
+mov CorrectAnswer[bx],ah
+
+
+
+
+
+
+
+
+
+call AddDelay
+call AddDelay
+call AddDelay
+
+drawMuncher PlayerX, PlayerY, 00h, MuncherNeutral
+
+
+mov al,0
+ret
+GetUserInput ENDP
+
+
+CheckGameOver PROC
+
+cmp Lives,0
+jnz NotGameOver
+
+;;;;;;;nico
+
+call DrawGameOver
+mov ah,0
+int 16h
+
+mov ah,4ch
+int 21h
+
+
+notGameOver:
+
+ret
+
+CheckGameOver ENDP
+
+
+CheckLevelWon PROC
+
+;mov cx,0
+mov SI,0
+CheckCorrectAnswerArray:
+
+cmp CorrectAnswer[SI],0
+jnz NotWon
+inc SI
+;inc cx
+cmp SI,20
+jnz CheckCorrectAnswerArray
+
+
+mov LevelWonBool,1
+
+NotWon:
+
+ret
+
+CheckLevelWon ENDP
+
+
+
+
+
+LevelWonCongrats PROC
+
+drawMuncher PlayerX, PlayerY, 03h, MuncherHappy
+call AddDelay
+call AddDelay
+call AddDelay
+
+TakeMeBack:
+
+call ClearScreenGraphics
+
+
+
+SetCursor 11,5
+PrintMessage LevelWonMessage
+
+SetCursor 11,7
+PrintMessage LevelWonMessage2
+
+SetCursor 26,7
+mov ah,2
+mov dl,Level
+add dl,'0'
+int 21h
+
+SetCursor 5,11
+PrintMessage LevelWonMessage3
+
+SetCursor 5,15
+PrintMessage LevelWonMessage4
+
+SetCursor 5,17
+PrintMessage LevelWonMessage5
+
+
+drawMuncher 20, 35, 03h, MuncherHappy
+
+
+
+LevelWonInput:
+
+mov ah,0
+int 16h
+
+cmp al,49 ;one
+;;;next level code here
+jz GoToNextLevelJump
+
+cmp al,50 ;two
+jz QuitGame
+
+jmp LevelWonInput
+GoToNextLevelJump:
+jmp GoToNextLevel
+
+
+
+QuitGame:
+Call ClearScreenGraphics
+SetCursor 5,11
+PrintMessage QuitGameMessage1
+
+SetCursor 5,15
+PrintMessage QuitGameMessage2
+
+SetCursor 5,17
+PrintMessage QuitGameMessage3
+
+drawMuncher 20, 35, 03h, MuncherSad
+
+;mov al,0
+QuitInput:
+mov ah,0
+int 16h
+
+cmp al,49
+jz TakeMeBackJump
+
+
+
+cmp al,50
+jz ShutDownGame
+
+
+jmp QuitInput
+
+TakeMeBackJump:
+jmp TakeMeBack
+
+ShutDownGame:
+mov ah, 4ch
+int 21h
+
+
+GoToNextLevel:
+call ClearScreenGraphics
+mov LevelWonBool,0 
+;mov ah,3
+;mov Lives,ah ;;;;;;;;;;;;;;;;;;;;;;;;;;;Decided to not reset lives every level. You can remove these two commented lines in order to 
+              ;;;;;;;;;;;;;;;;;;;;;;;;;;;have the player start with 3 lives every level.
+mov ax, MaxValue
+add ax,10
+mov MaxValue,ax
+inc Level
+inc DivNum
+mov ax,5
+mov PlayerX,ax
+mov ax,23
+mov PlayerY,ax
+mov ax,4
+mov PlayerPositionX,ax
+mov ax,5
+mov PlayerPositionY,ax
+
+ret
+
+LevelWonCongrats ENDP
+
+
+
+
+
+EatNumberWithAnimation PROC
+
+drawMuncher PlayerX, PlayerY, 00h, MuncherNeutral
+drawMuncher PlayerX, PlayerY, 03h, MuncherHappy
+
+DrawNumbers	
+
+call AddDelay
+call AddDelay
+call AddDelay
+
+drawMuncher PlayerX, PlayerY, 00h, MuncherNeutral
+drawMuncher PlayerX, PlayerY, 03h, MuncherEating
+
+
+
+call AddDelay
+call AddDelay
+call AddDelay
+
+drawMuncher PlayerX, PlayerY, 00h, MuncherNeutral
+drawMuncher PlayerX, PlayerY, 03h, MuncherHappy
+
+
+DrawNumbers	
+
+call AddDelay
+call AddDelay
+call AddDelay
+
+drawMuncher PlayerX, PlayerY, 00h, MuncherNeutral
+drawMuncher PlayerX, PlayerY, 03h, MuncherEating
+
+ret
+
+EatNumberWithAnimation ENDP
+
+
+
+
+
+
+
+
+
+
+ClearScreen PROC
+
+	push ax
+	push bx
+	push cx
+	push dx
+	
+	mov ax,0600h
+	mov bh,07 ;gray
+	mov cx,0
+	mov dx,184fh
+	int 10h
+	
+	pop dx
+	pop cx
+	pop bx
+	pop ax
+	
+	ret
+
+ClearScreen ENDP
+
+
+ClearScreenGraphics PROC ;should be updated to not compare 0s and 1s
+
+	push ax
+	push bx
+	push cx
+	push dx
+	
+	mov al,0
+	mov ah,0ch ;draw pixel command
+	
+mov cx,0
+mov dx,0
+
+loop2cs:
+	loop1cs:	
+	int 10h
+	inc cx
+	cmp cx,320
+	jnz loop1cs
+	mov cx,0
+	inc dx
+	cmp dx,200
+	jnz loop2cs
+
+
+	
+	pop dx
+	pop cx
+	pop bx
+	pop ax
+	
+	ret
+
+ClearScreenGraphics ENDP
+
+
+		
+	
+
+DrawPlayingScreen PROC
+
+	mov al,3 ;pixel color
+	mov ah,0ch ;draw pixel command
+
+	mov cx,0 ;column
+	mov dx,20 ;row
+	
+	lineOuter: ;draw vertical lines
+	lineInner:
+	    int 10h
+	    inc dx
+	    cmp dx,180
+	    jnz lineInner
+		add cx,64
+		mov dx,20
+		cmp cx,320
+		jnz lineOuter
+		
+	
+	mov cx,0 ;column
+	mov dx,20 ;row
+	
+	lineOuter2: ;draw horizontal lines
+	lineInner2:
+	    int 10h
+	    inc cx
+	    cmp cx,320 
+	    jnz lineInner2
+		add dx,40
+		mov cx,0
+		cmp dx,180
+		jnz lineOuter2
+	
+	mov cx,319 ;column ;draw rightmost vertical line
+	mov dx,20 ;row
+	LastLine1:
+	    int 10h
+	    inc dx
+	    cmp dx,180 
+	    jnz LastLine1
+		
+	mov cx,0 ;column ;draw bottom horizontal line
+	mov dx,180 ;row
+	LastLine2:
+	    int 10h
+	    inc cx
+	    cmp cx,320 
+	    jnz LastLine2
+	
+		
+	
+	ret
+
+DrawPlayingScreen ENDP
+
+
+
+
+AddDelay PROC
+
+	push ax
+	push bx
+	push cx
+	push dx
+	
+	; here is a delay part, it waits for 1 seconde
+    ; from the help of assembly:
+    ; INT 15h / AH = 86h - BIOS wait function. 
+    ;CX:DX = interval in microseconds 
+
+mov al, 0
+mov ah, 86h
+mov cx, 1
+mov dx, 2
+int 15h
+
+pop dx
+pop cx
+pop bx
+pop ax
+
+ret
+
+AddDelay ENDP
+
+DrawMainMenu PROC
+
+call ClearScreenGraphics
+
+SetCursor 9,7
+PrintMessage MainMenuMessageLine
+
+SetCursor 9,12
+PrintMessage MainMenuMessageLine
+
+SetCursor 11,10
+PrintMessage MainMenuMessage1
+
+SetCursor 8,16
+PrintMessage MainMenuMessage2
+
+SetCursor 8,18
+PrintMessage MainMenuMessage3
+
+ret
+DrawMainMenu ENDP
+
+
+
+
+DrawHowToPlay PROC
+
+call ClearScreenGraphics
+
+drawMuncher 10,10, 03h, MuncherNeutral
+
+SetCursor 10,2
+PrintMessage HowToPlayMessage1
+
+SetCursor 1,7
+PrintMessage HowToPlayMessage2
+
+SetCursor 1,9
+PrintMessage HowToPlayMessage3
+
+SetCursor 1,13
+PrintMessage HowToPlayMessage4
+
+SetCursor 1,15
+PrintMessage HowToPlayMessage5
+
+SetCursor 1,17
+PrintMessage HowToPlayMessage6
+
+SetCursor 1,22
+PrintMessage HowToPlayMessage7
+
+ret
+
+DrawHowToPlay ENDP
+
+
+
+DrawGameOver PROC
+
+call ClearScreenGraphics
+
+drawMuncher 10,10, 03h, MuncherSad
+
+drawMuncher 220,100, 03h, MuncherHappy
+
+SetCursor 1,7
+PrintMessage GameOverMessage1
+
+SetCursor 1,9
+PrintMessage GameOverMessage2
+
+setCursor 20,13
+mov ah,2
+mov dl,Level
+add dl,'0'
+int 21h
+
+SetCursor 1,13
+PrintMessage GameOverMessage3
+
+SetCursor 1,15
+PrintMessage GameOverMessage4
+
+SetCursor 1,19
+PrintMessage GameOverMessage5
+
+ret
+
+DrawGameOver ENDP
+
+
+
+WonGame PROC
+
+call ClearScreenGraphics
+
+SetCursor 1,13
+PrintMessage WonGameMessage1
+
+SetCursor 1,15
+PrintMessage WonGameMessage2
+
+SetCursor 1,17
+PrintMessage WonGameMessage3
+
+SetCursor 1,21
+PrintMessage WonGameMessage4
+
+drawMuncher 80, 50, 03h, MuncherHappy
+
+mov ah,0
+int 16h
+
+MOV AH,4CH
+INT 21H
+ret
+
+WonGame ENDP
+
+
+
+
+
+
+END MAIN
