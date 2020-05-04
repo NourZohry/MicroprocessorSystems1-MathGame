@@ -1,5 +1,3 @@
-;Created by: Nour Ayman (1170408)
-;Presented to: Dr. Khaled Mohammad Soradi
 ;Game Name: Number Munchers
 ;---------------------------------------------------
 ;Copied code snippets:
